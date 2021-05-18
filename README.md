@@ -54,7 +54,7 @@ year      = {2020}
 ### What is included ?
 
 * (I am currently writing my PhD thesis and the calendar might change.)
-* JUMBOT on digits (Release: May 2021)
+* JUMBOT on digits (SVHN to MNIST)
 * JUMBOT on Office-Home and VisDA (Release: June 2021)
 * JUMBOT on Partial Office-Home (Release: June 2021)
 
