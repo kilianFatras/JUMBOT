@@ -96,6 +96,9 @@ class Jumbot(object):
                 a, b = ot.unif(g_xs_mb.size()[0]), ot.unif(g_xt_mb.size()[0])
                 pi = ot.unbalanced.sinkhorn_knopp_unbalanced(a, b, total_cost.detach().cpu().numpy(),
                                                              self.epsilon, self.tau)
+                # To get DeepJDOT (https://arxiv.org/abs/1803.10081) comment the line above 
+                # and uncomment the following line:
+                #pi = ot.emd(a, b, total_cost.detach().cpu().numpy())
                 pi = torch.from_numpy(pi).float().cuda()
 
                 # train the model 
