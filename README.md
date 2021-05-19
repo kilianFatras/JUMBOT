@@ -6,7 +6,7 @@ Official Python3 implementation of our ICML 2021 paper "Unbalanced minibatch Opt
 Optimal transport distances have found many applications in machine learning for their capacity to compare non-parametric probability distributions. Yet their algorithmic complexity generally prevents their direct use on large scale datasets. Among the possible strategies to alleviate this issue, practitioners can rely on computing estimates of these distances over subsets of data, {\em i.e.} minibatches. While computationally appealing, we highlight in this paper some limits of this strategy, arguing it can lead to undesirable smoothing effects. As an alternative, we suggest that the same minibatch strategy coupled with unbalanced optimal transport can yield more robust behavior. We discuss the associated theoretical properties, such as unbiased estimators, existence of gradients and concentration bounds. Our experimental study shows that in challenging problems associated to domain adaptation, the use of unbalanced optimal transport leads to significantly better results, competing with or surpassing recent baselines.
 
 ### How to cite
-This paper has been accepted to [ICML 2021](https://icml.cc/Conferences/2021). If you use this toolbox in your research or minibatch Wasserstein and find them useful, please cite minibatch Wasserstein using the following bibtex reference:
+This paper has been accepted to [ICML 2021](https://icml.cc/Conferences/2021). If you use this toolbox in your research or unbalanced minibatch OT and find them useful, please cite unbalanced minibatch OT using the following bibtex reference:
 
 ```
 @InProceedings{fatras2021jumbot,
