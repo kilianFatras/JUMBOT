@@ -56,7 +56,7 @@ year      = {2020}
 * (I am currently writing my PhD thesis and the calendar might change.)
 * JUMBOT on digits (SVHN to MNIST)
 * JUMBOT on Office-Home and VisDA
-* JUMBOT on Partial Office-Home (Release: August-September 2021)
+* JUMBOT on Partial Office-Home
 
 
 ### Paper authors
