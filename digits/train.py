@@ -25,13 +25,46 @@ from models import Classifier2, weights_init, Cnn_generator
 from utils import *
 from jumbot import Jumbot
     
+import argparse
+import wandb
+import os
 
-batch_size = 500
-nclass = 10
-np.random.seed(1980)
+parser = argparse.ArgumentParser(description='Conditional Domain Adversarial Network')
+
+parser.add_argument("--batchsize", type=int, default=500)
+parser.add_argument("--nclass", type=int, default=10)
+parser.add_argument("--seed", type=int, default=1980)
+
+parser.add_argument("--wandb_entity", type=str, default='rlopt', help="entitiy of wandb team")
+parser.add_argument("--wandb_project_name", type=str, default='default_project', help="entitiy of wandb project")
+parser.add_argument('--wandb_offline', action = 'store_true')
+parser.add_argument('--debug_mode', action = 'store_true')
+args = parser.parse_args()
+
+####### Wandb
+if args.debug_mode:
+    wandb_project_name = "debug_project"
+else:
+    wandb_project_name = args.wandb_project_name
+
+wandb_exp_name = f'{args.method}_seed_{args.seed}'
+if args.wandb_offline:
+    os.environ["WANDB_MODE"] = "dryrun"
+
+wandb.init(config=args,
+            project=wandb_project_name,
+            name=wandb_exp_name,
+            entity=args.wandb_entity)
+
+print(f'wandb_project_name: f{wandb_project_name}')
+print(f'wandb_exp_name: f{wandb_exp_name}')
+
+
+batch_size = args.batchsize
+nclass = args.nclass
+np.random.seed(args.seed)
 
 # pre-processing to tensor, and mean subtraction
-
 
 ######DATASETS
 ### TRAIN sets
@@ -99,4 +132,9 @@ loss = jumbot.fit(train_svhn_loader, train_mnist_loader, test_mnist_loader, n_ep
 source_acc =jumbot.evaluate(test_svhn_loader)
 target_acc =jumbot.evaluate(test_mnist_loader)
 
-print("source_acc = {}, target_acc ={}".format(source_acc, target_acc))
+# print("source_acc = {}, target_acc ={}".format(source_acc, target_acc))
+
+wandb.log({
+            'source_acc': source_acc,
+            'target_acc': target_acc,
+        })
