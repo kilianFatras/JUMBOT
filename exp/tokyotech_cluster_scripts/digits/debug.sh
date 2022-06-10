@@ -4,7 +4,7 @@ WANDB_PROJECT_NAME='debug_digits_ot_study'
 # ======== Loop  ========
 
 SHELL_ARGS="--wandb_entity ${WANDB_ENTITY} \
-            --wandb_project_name ${WANDB_ENTITY}
+            --wandb_project_name ${WANDB_PROJECT_NAME}
             "
 
 CMD="ybatch run.sh ${SHELL_ARGS}"

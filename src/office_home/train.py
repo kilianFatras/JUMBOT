@@ -72,24 +72,6 @@ def image_classification_test(loader, model, test_10crop=True):
     accuracy = torch.sum(torch.squeeze(predict).float() == all_label).item() / float(all_label.size()[0])
     return accuracy
 
-# def image_label(loader, model, threshold=0.9, out_dir=None):
-#     # save the pseudo_label
-#     out_path = osp.join(out_dir, "pseudo_label.txt")
-#     print("Pseudo Labeling to ", out_path)
-#     iter_label = iter(loader["target_label"])
-#     with torch.no_grad():
-#         with open(out_path, 'w') as f:
-#             for i in range(len(loader['target_label'])):
-#                 inputs, labels, paths = iter_label.next()
-#                 inputs = inputs.cuda()
-#                 _, outputs = model(inputs)
-#                 softmax_outputs = nn.Softmax(dim=1)(outputs)
-#                 maxpred, pseudo_labels = torch.max(softmax_outputs, dim=1)
-#                 pseudo_labels[maxpred < threshold] = -1
-#                 for (path, label) in zip(paths, pseudo_labels):
-#                     f.write(path+' '+str(label.item())+'\n')
-#     return out_path
-
 def train(config):
     criterion=nn.CrossEntropyLoss()
     ## set pre-process
@@ -219,15 +201,6 @@ def train(config):
                     'transfer_loss': transfer_loss_value,
                     'total_loss': total_loss_value,
                 })
-                # best_model = temp_model
-                # checkpoint = {"base_network": best_model.state_dict()}
-                # torch.save(checkpoint, osp.join(config["output_path"], "best_model.pth"))
-                # print("\n##########     save the best model.    #############\n")
-            # log_str = "iter: {:05d}, precision: {:.5f}".format(i, temp_acc)
-            # config["out_file"].write(log_str+"\n")
-            # config["out_file"].flush()
-            # writer.add_scalar('precision', temp_acc, i)
-            # print(log_str)
 
             print("class_loss: {:.3f}".format(loss_value))
             loss_value = 0
@@ -237,23 +210,6 @@ def train(config):
             # for index, img in enumerate(images_inv):
                 # writer.add_image(str(index)+'/Images', img, i)
             
-        # save the pseudo_label
-        # if 'PseudoLabel' in config['method'] and (i % config["label_interval"] == config["label_interval"]-1):
-        #     base_network.train(False)
-        #     pseudo_label_list = image_label(dset_loaders, base_network, threshold=config['threshold'], \
-        #                         out_dir=config["output_path"])
-        #     dsets["target"] = ImageList(open(pseudo_label_list).readlines(), \
-        #                         transform=prep_dict["target"])
-        #     dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, \
-        #             shuffle=True, num_workers=config['args'].num_worker, drop_last=True)
-        #     iter_target = iter(dset_loaders["target"]) # replace the target dataloader with Pseudo_Label dataloader
-        #     begin_label = True
-
-        # if i > config["stop_step"]:
-        #     log_str = "method {}, iter: {:05d}, precision: {:.5f}".format(config["output_path"], best_step, best_acc)
-        #     config["final_log"].write(log_str+"\n")
-        #     config["final_log"].flush()
-        #     break
         if i == config["num_iterations"]-1:
             print('end of training')
 
@@ -320,7 +276,7 @@ if __name__ == "__main__":
             raise argparse.ArgumentTypeError('Unsupported value encountered.')
     parser = argparse.ArgumentParser(description='Conditional Domain Adversarial Network')
     parser.add_argument('method', type=str, default='UOT')
-    # parser.add_argument('--gpu_id', type=str, nargs='?', default='0', help="device id to run")
+
     parser.add_argument('--num_gpu', type=int, default='2', help="num of gpus")
     parser.add_argument('--net', type=str, default='ResNet50', choices=["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "VGG11", "VGG13", "VGG16", "VGG19", "VGG11BN", "VGG13BN", "VGG16BN", "VGG19BN", "AlexNet"])
     parser.add_argument('--dset', type=str, default='office', choices=['office', 'image-clef', 'visda', 'office-home'], help="The dataset or source dataset used")
@@ -328,16 +284,12 @@ if __name__ == "__main__":
     parser.add_argument('--t_dset_path', type=str, default='./data/office/webcam_10_list.txt', help="The target dataset path list")
     parser.add_argument('--test_interval', type=int, default=500, help="interval of two continuous test phase")
     parser.add_argument('--snapshot_interval', type=int, default=5000, help="interval of two continuous output model")
-    parser.add_argument('--output_dir', type=str, default='san', help="output directory of our model (in ../snapshot directory)")
-    parser.add_argument('--restore_dir', type=str, default=None, help="restore directory of our model (in ../snapshot directory)")
+
     parser.add_argument('--lr', type=float, default=0.001, help="learning rate")
     parser.add_argument('--trade_off', type=float, default=1.0, help="trade off between supervised loss and self-training loss")
     parser.add_argument('--batch_size', type=int, default=36, help="training batch size")
     parser.add_argument('--cos_dist', type=str2bool, default=False, help="the classifier uses cosine similarity.")
-    parser.add_argument('--threshold', default=0.9, type=float, help="threshold of pseudo labels")
-    parser.add_argument('--label_interval', type=int, default=200, help="interval of two continuous pseudo label phase")
-    parser.add_argument('--stop_step', type=int, default=0, help="stop steps")
-    parser.add_argument('--final_log', type=str, default=None, help="final_log file")
+
     parser.add_argument('--weight_type', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='all', help="whether add reg_loss or correct_loss.")
     parser.add_argument('--seed', type=int, default=12345)
@@ -346,21 +298,18 @@ if __name__ == "__main__":
     parser.add_argument('--adv_weight', type=float, default=1.0, help="weight of adversarial loss")
     parser.add_argument('--source_detach', default=False, type=str2bool, help="detach source feature from the adversarial learning")
 
-
     parser.add_argument("--wandb_entity", type=str, default='rlopt', help="entitiy of wandb team")
     parser.add_argument("--wandb_project_name", type=str, default='default_project', help="entitiy of wandb project")
     parser.add_argument('--wandb_offline', action = 'store_true')
     parser.add_argument('--debug_mode', action = 'store_true')
 
     args = parser.parse_args()
-    # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-    #os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
 
-
+    # ============= GPU Device =============
     device = torch.device("cuda:0" if (torch.cuda.is_available() and args.num_gpu > 0) else "cpu")
     print(f'device : {device}')
 
-    #set seed
+    # ============= set seed =============
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -368,7 +317,7 @@ if __name__ == "__main__":
     torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark=True
 
-    # train config
+    # ============= train config =============
     config = {}
     config['args'] = args
     config['method'] = args.method
@@ -379,18 +328,6 @@ if __name__ == "__main__":
     config["snapshot_interval"] = args.snapshot_interval
     config["output_for_test"] = True
 
-    # config["output_path"] = "snapshot/" + args.output_dir
-    # config["restore_path"] = "snapshot/" + args.restore_dir if args.restore_dir else None
-    # if os.path.exists(config["output_path"]):
-    #     print("checkpoint dir exists, which will be removed")
-    #     import shutil
-    #     shutil.rmtree(config["output_path"], ignore_errors=True)
-    # os.mkdir(config["output_path"])
-    # config["out_file"] = open(osp.join(config["output_path"], "log.txt"), "w")
-
-    # if len(config['gpu'].split(','))>1:
-    #     args.batch_size = args.batch_size#*len(config['gpu'].split(','))
-    #     print("gpus:{}, batch size:{}".format(config['gpu'], args.batch_size))
 
     if config['num_gpu'] > 1:
         args.batch_size = args.batch_size
@@ -420,51 +357,44 @@ if __name__ == "__main__":
                            "weight_decay":0.0005, "nesterov":True}, "lr_type":"inv", \
                            "lr_param":{"lr":args.lr, "gamma":0.001, "power":0.75} }
 
-    config["dataset"] = args.dset
-    config["data"] = {"source":{"list_path":args.s_dset_path, "batch_size":args.batch_size}, \
-                      "target":{"list_path":args.t_dset_path, "batch_size":args.batch_size}, \
-                      "test":{"list_path":args.t_dset_path, "batch_size":4}}
 
-    # ================ Dataset Dependent Configuration ================   
-    if config["dataset"] == "office":
-        if ("amazon" in args.s_dset_path and "webcam" in args.t_dset_path) or \
-           ("webcam" in args.s_dset_path and "dslr" in args.t_dset_path) or \
-           ("webcam" in args.s_dset_path and "amazon" in args.t_dset_path) or \
-           ("dslr" in args.s_dset_path and "amazon" in args.t_dset_path):
-            config["optimizer"]["lr_param"]["lr"] = 0.001 # optimal parameters
-        elif ("amazon" in args.s_dset_path and "dslr" in args.t_dset_path) or \
-             ("dslr" in args.s_dset_path and "webcam" in args.t_dset_path):
-            config["optimizer"]["lr_param"]["lr"] = 0.0003 # optimal parameters
-            args.stop_step = 20000
-        else:
-            config["optimizer"]["lr_param"]["lr"] = 0.001
-        config["network"]["params"]["class_num"] = 31
-        args.stop_step = 20000
-    elif config["dataset"] == "office-home":
+    # ================ Dataset Dependent Configuration ================ 
+    if config["dataset"] == "office-home":
         config["optimizer"]["lr_param"]["lr"] = 0.001 # optimal parameters
         config["network"]["params"]["class_num"] = 65
+        domain_names = ['Art', 'Clipart', 'Product', 'Real_World']
+
     elif config["dataset"] == "visda":
         config["optimizer"]["lr_param"]["lr"] = 0.001 # optimal parameters
         config["network"]["params"]["class_num"] = 12
+        domain_names = ['train_list', 'validation_list', 'test_list']
         #config['loss']["trade_off"] = 1.0
     else:
         raise ValueError('Dataset has not been implemented.')
-        
-    if args.lr != 0.001:
-        config["optimizer"]["lr_param"]["lr"] = args.lr
-        config["optimizer"]["lr_param"]["gamma"] = 0.001
-    config["out_file"].write(str(config))
-    config["out_file"].flush()
-    config["threshold"] = args.threshold
-    config["label_interval"] = args.label_interval
-    if args.stop_step == 0:
-        config["stop_step"] = 10000
+
+    # ================ Data Loader ================ 
+
+    if os.environ['CLUSTER_NAME'] == 'tokyotech_cluster':
+        data_folder = os.environ['HINADORI_LOCAL_SCRATCH'] # For Tokyo Tech Cluster
+    elif os.environ['CLUSTER_NAME'] == 'mila_cluster':
+        data_folder = os.environ['SLURM_TMPDIR'] # For Mila Cluster   
+    elif os.environ['CLUSTER_NAME'] == 'graham':
+        data_folder = os.environ['SLURM_TMPDIR'] # For Graham Cluster   
     else:
-        config["stop_step"] = args.stop_step
-    if args.final_log is None:
-        config["final_log"] = open('log.txt', "a")
-    else:
-        config["final_log"] = open(args.final_log, "a")
+        cluster_name = os.environ['CLUSTER_NAME']
+        raise ValueError(f'Dataset {cluster_name} has not been supported.')
+
+
+    s_dset_path = os.path.join(f'{data_folder}/', args.dset, f'{domain_names[args.s_dset_id]}.txt')
+    t_dset_path = os.path.join(f'{data_folder}/', args.dset, f'{domain_names[args.t_dset_id]}.txt')
+
+    config["dataset"] = args.dset
+    config["data"] = {"source":{"list_path":s_dset_path, "batch_size":args.batch_size}, \
+                        "target":{"list_path":t_dset_path, "batch_size":args.batch_size}, \
+                        "test":{"list_path":t_dset_path, "batch_size":4}
+                        }
+    print('s dataset: ', s_dset_path)
+    print('t dataset: ', t_dset_path)
     
     #OH param : alpha = 0.01, lambda = 0.5, reg_m = 0.5
     #VisDA param : alpha = 0.005, lambda = 1., reg_m = 0.3
@@ -476,21 +406,16 @@ if __name__ == "__main__":
     config["reg_m"] = 0.5
 
     # ================ Wandb ================ 
-    if args.debug_mode:
-        wandb_project_name = "debug_project"
-    else:
-        wandb_project_name = args.wandb_project_name
-
     wandb_exp_name = f'{args.method}_seed_{args.seed}'
     if args.wandb_offline:
         os.environ["WANDB_MODE"] = "dryrun"
 
     wandb.init(config=args,
-                project=wandb_project_name,
+                project=args.wandb_project_name,
                 name=wandb_exp_name,
                 entity=args.wandb_entity)
 
-    print(f'wandb_project_name: f{wandb_project_name}')
+    print(f'wandb_project_name: f{args.wandb_project_name}')
     print(f'wandb_exp_name: f{wandb_exp_name}')
 
     ####### Main
