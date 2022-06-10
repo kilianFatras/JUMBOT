@@ -44,14 +44,9 @@ parser.add_argument("--epsilon", type=float, default=0.1)
 parser.add_argument("--wandb_entity", type=str, default='rlopt', help="entitiy of wandb team")
 parser.add_argument("--wandb_project_name", type=str, default='default_project', help="entitiy of wandb project")
 parser.add_argument('--wandb_offline', action = 'store_true')
-parser.add_argument('--debug_mode', action = 'store_true')
 args = parser.parse_args()
 
 ####### Wandb
-if args.debug_mode:
-    wandb_project_name = "debug_project"
-else:
-    wandb_project_name = args.wandb_project_name
 
 # TODO
 wandb_exp_name = f'{args.batchsize}_seed_{args.seed}'
@@ -59,11 +54,11 @@ if args.wandb_offline:
     os.environ["WANDB_MODE"] = "dryrun"
 
 wandb.init(config=args,
-            project=wandb_project_name,
+            project=args.wandb_project_name,
             name=wandb_exp_name,
             entity=args.wandb_entity)
 
-print(f'wandb_project_name: f{wandb_project_name}')
+print(f'wandb_project_name: f{args.wandb_project_name}')
 print(f'wandb_exp_name: f{wandb_exp_name}')
 
 
@@ -109,7 +104,6 @@ train_mnist_loader = torch.utils.data.DataLoader(train_mnist_trainset, batch_siz
 
 
 ### TEST sets
-
 test_svhn_loader = torch.utils.data.DataLoader(
         datasets.SVHN('./data', split='test', transform=transform_svhn, download=True),
         batch_size=batch_size, shuffle=False)

@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 import network
 import pre_process as prep
 from torch.utils.data import DataLoader
@@ -22,6 +22,9 @@ import math
 import torch.nn.functional as F
 from utils import *
 import ot
+
+import wandb
+import os
 
 def image_classification_test(loader, model, test_10crop=True):
     start_test = True
@@ -69,23 +72,23 @@ def image_classification_test(loader, model, test_10crop=True):
     accuracy = torch.sum(torch.squeeze(predict).float() == all_label).item() / float(all_label.size()[0])
     return accuracy
 
-def image_label(loader, model, threshold=0.9, out_dir=None):
-    # save the pseudo_label
-    out_path = osp.join(out_dir, "pseudo_label.txt")
-    print("Pseudo Labeling to ", out_path)
-    iter_label = iter(loader["target_label"])
-    with torch.no_grad():
-        with open(out_path, 'w') as f:
-            for i in range(len(loader['target_label'])):
-                inputs, labels, paths = iter_label.next()
-                inputs = inputs.cuda()
-                _, outputs = model(inputs)
-                softmax_outputs = nn.Softmax(dim=1)(outputs)
-                maxpred, pseudo_labels = torch.max(softmax_outputs, dim=1)
-                pseudo_labels[maxpred < threshold] = -1
-                for (path, label) in zip(paths, pseudo_labels):
-                    f.write(path+' '+str(label.item())+'\n')
-    return out_path
+# def image_label(loader, model, threshold=0.9, out_dir=None):
+#     # save the pseudo_label
+#     out_path = osp.join(out_dir, "pseudo_label.txt")
+#     print("Pseudo Labeling to ", out_path)
+#     iter_label = iter(loader["target_label"])
+#     with torch.no_grad():
+#         with open(out_path, 'w') as f:
+#             for i in range(len(loader['target_label'])):
+#                 inputs, labels, paths = iter_label.next()
+#                 inputs = inputs.cuda()
+#                 _, outputs = model(inputs)
+#                 softmax_outputs = nn.Softmax(dim=1)(outputs)
+#                 maxpred, pseudo_labels = torch.max(softmax_outputs, dim=1)
+#                 pseudo_labels[maxpred < threshold] = -1
+#                 for (path, label) in zip(paths, pseudo_labels):
+#                     f.write(path+' '+str(label.item())+'\n')
+#     return out_path
 
 def train(config):
     criterion=nn.CrossEntropyLoss()
@@ -182,20 +185,22 @@ def train(config):
     schedule_param = optimizer_config["lr_param"]
     lr_scheduler = lr_schedule.schedule_dict[optimizer_config["lr_type"]]
 
-    gpus = config['gpu'].split(',')
-    if len(gpus) > 1:
-        base_network = nn.DataParallel(base_network, device_ids=[int(i) for i in range(len(gpus))])
+    if config['num_gpu'] > 1:
+        print("DataParallel")
+        base_network = nn.DataParallel(base_network, device_ids=[int(i) for i in range(config['num_gpu'])])
         
     loss_params = config["loss"]
     high = loss_params["trade_off"]
     begin_label = False
-    writer = SummaryWriter(config["output_path"])
+    # writer = SummaryWriter(config["output_path"])
 
     ## train   
     len_train_source = len(dset_loaders["source"])
     len_train_target = len(dset_loaders["target"])
-    transfer_loss_value = classifier_loss_value = total_loss_value = 0.0
-    best_acc = 0.0
+    transfer_loss_value = 0
+    classifier_loss_value = 0
+    total_loss_value = 0
+    best_acc = 0
     loss_value = 0
     for i in tqdm(range(config["num_iterations"]), total=config["num_iterations"]):
         if i % config["test_interval"] == config["test_interval"]-1:
@@ -206,42 +211,58 @@ def train(config):
             if temp_acc > best_acc:
                 best_step = i
                 best_acc = temp_acc
-                best_model = temp_model
-                checkpoint = {"base_network": best_model.state_dict()}
-                torch.save(checkpoint, osp.join(config["output_path"], "best_model.pth"))
-                print("\n##########     save the best model.    #############\n")
-            log_str = "iter: {:05d}, precision: {:.5f}".format(i, temp_acc)
-            config["out_file"].write(log_str+"\n")
-            config["out_file"].flush()
-            writer.add_scalar('precision', temp_acc, i)
-            print(log_str)
+
+                wandb.log({
+                    'iteration': i,
+                    'precision': temp_acc,
+                    'classifier_loss': classifier_loss_value,
+                    'transfer_loss': transfer_loss_value,
+                    'total_loss': total_loss_value,
+                })
+                # best_model = temp_model
+                # checkpoint = {"base_network": best_model.state_dict()}
+                # torch.save(checkpoint, osp.join(config["output_path"], "best_model.pth"))
+                # print("\n##########     save the best model.    #############\n")
+            # log_str = "iter: {:05d}, precision: {:.5f}".format(i, temp_acc)
+            # config["out_file"].write(log_str+"\n")
+            # config["out_file"].flush()
+            # writer.add_scalar('precision', temp_acc, i)
+            # print(log_str)
 
             print("class_loss: {:.3f}".format(loss_value))
             loss_value = 0
 
             #show val result on tensorboard
-            images_inv = prep.inv_preprocess(xs.clone().cpu(), 3)
-            for index, img in enumerate(images_inv):
-                writer.add_image(str(index)+'/Images', img, i)
+            # images_inv = prep.inv_preprocess(xs.clone().cpu(), 3)
+            # for index, img in enumerate(images_inv):
+                # writer.add_image(str(index)+'/Images', img, i)
             
         # save the pseudo_label
-        if 'PseudoLabel' in config['method'] and (i % config["label_interval"] == config["label_interval"]-1):
-            base_network.train(False)
-            pseudo_label_list = image_label(dset_loaders, base_network, threshold=config['threshold'], \
-                                out_dir=config["output_path"])
-            dsets["target"] = ImageList(open(pseudo_label_list).readlines(), \
-                                transform=prep_dict["target"])
-            dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, \
-                    shuffle=True, num_workers=config['args'].num_worker, drop_last=True)
-            iter_target = iter(dset_loaders["target"]) # replace the target dataloader with Pseudo_Label dataloader
-            begin_label = True
+        # if 'PseudoLabel' in config['method'] and (i % config["label_interval"] == config["label_interval"]-1):
+        #     base_network.train(False)
+        #     pseudo_label_list = image_label(dset_loaders, base_network, threshold=config['threshold'], \
+        #                         out_dir=config["output_path"])
+        #     dsets["target"] = ImageList(open(pseudo_label_list).readlines(), \
+        #                         transform=prep_dict["target"])
+        #     dset_loaders["target"] = DataLoader(dsets["target"], batch_size=train_bs, \
+        #             shuffle=True, num_workers=config['args'].num_worker, drop_last=True)
+        #     iter_target = iter(dset_loaders["target"]) # replace the target dataloader with Pseudo_Label dataloader
+        #     begin_label = True
 
-        if i > config["stop_step"]:
-            log_str = "method {}, iter: {:05d}, precision: {:.5f}".format(config["output_path"], best_step, best_acc)
-            config["final_log"].write(log_str+"\n")
-            config["final_log"].flush()
+        # if i > config["stop_step"]:
+        #     log_str = "method {}, iter: {:05d}, precision: {:.5f}".format(config["output_path"], best_step, best_acc)
+        #     config["final_log"].write(log_str+"\n")
+        #     config["final_log"].flush()
+        #     break
+        if i == config["num_iterations"]-1:
+            print('end of training')
+
+            wandb.log({
+                'best_step': best_step,
+                'best_acc': best_acc,
+            })
             break
-                 
+
         ## train one iter
         base_network.train(True)
         optimizer = lr_scheduler(optimizer, i, **schedule_param)
@@ -277,10 +298,16 @@ def train(config):
         
         loss_value += classifier_loss.item() / config["test_interval"]           
         total_loss =  classifier_loss + transfer_loss
+
+        classifier_loss_value += classifier_loss.item() / config["test_interval"]   
+        transfer_loss_value += transfer_loss.item() / config["test_interval"]
+        total_loss_value = classifier_loss_value + transfer_loss_value
+
         total_loss.backward()
         optimizer.step()
-    checkpoint = {"base_network": temp_model.state_dict()}
-    torch.save(checkpoint, osp.join(config["output_path"], "final_model.pth"))
+
+    # checkpoint = {"base_network": temp_model.state_dict()}
+    # torch.save(checkpoint, osp.join(config["output_path"], "final_model.pth"))
     return best_acc
 
 if __name__ == "__main__":
@@ -293,7 +320,8 @@ if __name__ == "__main__":
             raise argparse.ArgumentTypeError('Unsupported value encountered.')
     parser = argparse.ArgumentParser(description='Conditional Domain Adversarial Network')
     parser.add_argument('method', type=str, default='UOT')
-    parser.add_argument('--gpu_id', type=str, nargs='?', default='0', help="device id to run")
+    # parser.add_argument('--gpu_id', type=str, nargs='?', default='0', help="device id to run")
+    parser.add_argument('--num_gpu', type=int, default='2', help="num of gpus")
     parser.add_argument('--net', type=str, default='ResNet50', choices=["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "VGG11", "VGG13", "VGG16", "VGG19", "VGG11BN", "VGG13BN", "VGG16BN", "VGG19BN", "AlexNet"])
     parser.add_argument('--dset', type=str, default='office', choices=['office', 'image-clef', 'visda', 'office-home'], help="The dataset or source dataset used")
     parser.add_argument('--s_dset_path', type=str, default='./data/office/amazon_31_list.txt', help="The source dataset path list")
@@ -317,9 +345,20 @@ if __name__ == "__main__":
     parser.add_argument('--test_10crop', type=str2bool, default=True)
     parser.add_argument('--adv_weight', type=float, default=1.0, help="weight of adversarial loss")
     parser.add_argument('--source_detach', default=False, type=str2bool, help="detach source feature from the adversarial learning")
+
+
+    parser.add_argument("--wandb_entity", type=str, default='rlopt', help="entitiy of wandb team")
+    parser.add_argument("--wandb_project_name", type=str, default='default_project', help="entitiy of wandb project")
+    parser.add_argument('--wandb_offline', action = 'store_true')
+    parser.add_argument('--debug_mode', action = 'store_true')
+
     args = parser.parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+    # os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     #os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
+
+
+    device = torch.device("cuda:0" if (torch.cuda.is_available() and args.num_gpu > 0) else "cpu")
+    print(f'device : {device}')
 
     #set seed
     random.seed(args.seed)
@@ -333,26 +372,34 @@ if __name__ == "__main__":
     config = {}
     config['args'] = args
     config['method'] = args.method
-    config["gpu"] = args.gpu_id
-    config["num_iterations"] = 100004
+    # config["gpu"] = args.gpu_id
+    config["num_gpu"] = args.num_gpu
+    # config["num_iterations"] = 100004
     config["test_interval"] = args.test_interval
     config["snapshot_interval"] = args.snapshot_interval
     config["output_for_test"] = True
-    config["output_path"] = "snapshot/" + args.output_dir
-    config["restore_path"] = "snapshot/" + args.restore_dir if args.restore_dir else None
-    if os.path.exists(config["output_path"]):
-        print("checkpoint dir exists, which will be removed")
-        import shutil
-        shutil.rmtree(config["output_path"], ignore_errors=True)
-    os.mkdir(config["output_path"])
-    config["out_file"] = open(osp.join(config["output_path"], "log.txt"), "w")
 
-    if len(config['gpu'].split(','))>1:
-        args.batch_size = args.batch_size#*len(config['gpu'].split(','))
-        print("gpus:{}, batch size:{}".format(config['gpu'], args.batch_size))
+    # config["output_path"] = "snapshot/" + args.output_dir
+    # config["restore_path"] = "snapshot/" + args.restore_dir if args.restore_dir else None
+    # if os.path.exists(config["output_path"]):
+    #     print("checkpoint dir exists, which will be removed")
+    #     import shutil
+    #     shutil.rmtree(config["output_path"], ignore_errors=True)
+    # os.mkdir(config["output_path"])
+    # config["out_file"] = open(osp.join(config["output_path"], "log.txt"), "w")
+
+    # if len(config['gpu'].split(','))>1:
+    #     args.batch_size = args.batch_size#*len(config['gpu'].split(','))
+    #     print("gpus:{}, batch size:{}".format(config['gpu'], args.batch_size))
+
+    if config['num_gpu'] > 1:
+        args.batch_size = args.batch_size
+        print(f"gpus:{list( range( config['num_gpu'])) }, batch size:{args.batch_size}")
 
     config["prep"] = {"test_10crop":args.test_10crop, 'params':{"resize_size":256, "crop_size":224}}
     config["loss"] = {"trade_off":args.trade_off}
+
+    # ================ Model Arch ================
     if "ResNet" in args.net:
         net = network.ResNetFc
         if args.dset == "office-home":
@@ -368,6 +415,7 @@ if __name__ == "__main__":
         config["network"] = {"name":network.VGGFc, \
             "params":{"vgg_name":args.net, "use_bottleneck":True, "bottleneck_dim":256, "new_cls":True} }
 
+    # ================ Optimizer ================
     config["optimizer"] = {"type":optim.SGD, "optim_params":{'lr':args.lr, "momentum":0.9, \
                            "weight_decay":0.0005, "nesterov":True}, "lr_type":"inv", \
                            "lr_param":{"lr":args.lr, "gamma":0.001, "power":0.75} }
@@ -377,6 +425,7 @@ if __name__ == "__main__":
                       "target":{"list_path":args.t_dset_path, "batch_size":args.batch_size}, \
                       "test":{"list_path":args.t_dset_path, "batch_size":4}}
 
+    # ================ Dataset Dependent Configuration ================   
     if config["dataset"] == "office":
         if ("amazon" in args.s_dset_path and "webcam" in args.t_dset_path) or \
            ("webcam" in args.s_dset_path and "dslr" in args.t_dset_path) or \
@@ -400,6 +449,7 @@ if __name__ == "__main__":
         #config['loss']["trade_off"] = 1.0
     else:
         raise ValueError('Dataset has not been implemented.')
+        
     if args.lr != 0.001:
         config["optimizer"]["lr_param"]["lr"] = args.lr
         config["optimizer"]["lr_param"]["gamma"] = 0.001
@@ -419,9 +469,30 @@ if __name__ == "__main__":
     #OH param : alpha = 0.01, lambda = 0.5, reg_m = 0.5
     #VisDA param : alpha = 0.005, lambda = 1., reg_m = 0.3
 
+    # ================ Hyperparams ================ 
     results = []
     config["alpha"] = 0.01
     config["lambda_t"] = 0.5
     config["reg_m"] = 0.5
+
+    # ================ Wandb ================ 
+    if args.debug_mode:
+        wandb_project_name = "debug_project"
+    else:
+        wandb_project_name = args.wandb_project_name
+
+    wandb_exp_name = f'{args.method}_seed_{args.seed}'
+    if args.wandb_offline:
+        os.environ["WANDB_MODE"] = "dryrun"
+
+    wandb.init(config=args,
+                project=wandb_project_name,
+                name=wandb_exp_name,
+                entity=args.wandb_entity)
+
+    print(f'wandb_project_name: f{wandb_project_name}')
+    print(f'wandb_exp_name: f{wandb_exp_name}')
+
+    ####### Main
     results.append(train(config))
     print(results)
