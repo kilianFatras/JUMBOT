@@ -290,7 +290,7 @@ if __name__ == "__main__":
     parser.add_argument('method', type=str, default='UOT')
     parser.add_argument('--num_gpu', type=int, default='2', help="num of gpus")
     parser.add_argument('--net', type=str, default='ResNet50', choices=["ResNet50", "ResNet101", "ResNet152", "VGG11", "VGG13", "VGG16", "VGG19", "VGG11BN", "VGG13BN", "VGG16BN", "VGG19BN"])
-    parser.add_argument('--dset', type=str, default='office', choices=['office', 'image-clef', 'visda', 'office-home'], help="The dataset or source dataset used")
+    parser.add_argument('--dset', type=str, default='office', choices=['office', 'image-clef', 'visda', 'office_home'], help="The dataset or source dataset used")
     # parser.add_argument('--s_dset_path', type=str, default='./data/office/amazon_31_list.txt', help="The source dataset path list")
     # parser.add_argument('--t_dset_path', type=str, default='./data/office/webcam_10_list.txt', help="The target dataset path list")
     # parser.add_argument('--s_dset_id', type=int, default=0, help="The source dataset path list, e.g. if you set 0 -> office_home/Art.txt")
@@ -423,8 +423,6 @@ if __name__ == "__main__":
     print(f'wandb_exp_name: f{wandb_exp_name}')
 
     ####### Main
-
-
     counter = 0
     for count_s, domain_name_s in enumerate(domain_names):
         for count_t, domain_name_t in enumerate(domain_names):
