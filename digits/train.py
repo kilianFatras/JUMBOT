@@ -16,10 +16,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torchvision import datasets, transforms
-from torch.utils.data import DataLoader
-torch.multiprocessing.set_sharing_strategy('file_system')
+# from torch.utils.data import DataLoader
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
-import torch.nn.functional as F
+# import torch.nn.functional as F
 from models import Classifier2, weights_init, Cnn_generator
 
 from utils import *
@@ -34,6 +34,12 @@ parser = argparse.ArgumentParser(description='Conditional Domain Adversarial Net
 parser.add_argument("--batchsize", type=int, default=500)
 parser.add_argument("--nclass", type=int, default=10)
 parser.add_argument("--seed", type=int, default=1980)
+parser.add_argument("--n_epochs", type=int, default=100)
+
+parser.add_argument("--eta1", type=float, default=0.1)
+parser.add_argument("--eta2", type=float, default=0.1)
+parser.add_argument("--tau", type=float, default=1.0)
+parser.add_argument("--epsilon", type=float, default=0.1)
 
 parser.add_argument("--wandb_entity", type=str, default='rlopt', help="entitiy of wandb team")
 parser.add_argument("--wandb_project_name", type=str, default='default_project', help="entitiy of wandb project")
@@ -47,7 +53,8 @@ if args.debug_mode:
 else:
     wandb_project_name = args.wandb_project_name
 
-wandb_exp_name = f'{args.method}_seed_{args.seed}'
+# TODO
+wandb_exp_name = f'{args.batchsize}_seed_{args.seed}'
 if args.wandb_offline:
     os.environ["WANDB_MODE"] = "dryrun"
 
@@ -113,21 +120,15 @@ test_mnist_loader = torch.utils.data.DataLoader(
     
 
 ####### Main
-
-eta1 = 0.1
-eta2 = 0.1
-tau = 1.0
-epsilon = 0.1
-
 model_g = Cnn_generator().cuda().apply(weights_init)
 model_f = Classifier2(nclass=nclass).cuda().apply(weights_init)
 
 model_g.train()
 model_f.train()
 
-jumbot = Jumbot(model_g, model_f, n_class=nclass, eta1=eta1, eta2=eta2, tau=tau, epsilon=epsilon)
+jumbot = Jumbot(model_g, model_f, n_class=nclass, eta1=args.eta1, eta2=args.eta2, tau=args.tau, epsilon=args.epsilon)
 loss = jumbot.source_only(train_svhn_loader)
-loss = jumbot.fit(train_svhn_loader, train_mnist_loader, test_mnist_loader, n_epochs=100)
+loss = jumbot.fit(train_svhn_loader, train_mnist_loader, test_mnist_loader, n_epochs=args.n_epochs)
 
 source_acc =jumbot.evaluate(test_svhn_loader)
 target_acc =jumbot.evaluate(test_mnist_loader)
