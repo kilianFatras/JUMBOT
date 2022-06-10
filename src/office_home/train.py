@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-# from tensorboardX import SummaryWriter
 import network
 import pre_process as prep
 from torch.utils.data import DataLoader
@@ -73,6 +72,10 @@ def image_classification_test(loader, model, test_10crop=True):
     return accuracy
 
 def train(config):
+
+    exp_tag = config["exp_tag"]
+    print(f'{config["exp_full_tag"]} is started')
+
     criterion=nn.CrossEntropyLoss()
     ## set pre-process
     prep_dict = {}
@@ -142,19 +145,19 @@ def train(config):
     net_config = config["network"]
     base_network = net_config["name"](**net_config["params"])
     base_network = base_network.cuda()
-    if config["restore_path"]:
-        checkpoint = torch.load(osp.join(config["restore_path"], "best_model.pth"))["base_network"]
-        ckp = {}
-        for k, v in checkpoint.items():
-            if "module" in k:
-                ckp[k.split("module.")[-1]] = v
-            else:
-                ckp[k] = v
-        base_network.load_state_dict(ckp)
-        log_str = "successfully restore from {}".format(osp.join(config["restore_path"], "best_model.pth"))
-        config["out_file"].write(log_str+"\n")
-        config["out_file"].flush()
-        print(log_str)
+    # if config["restore_path"]:
+    #     checkpoint = torch.load(osp.join(config["restore_path"], "best_model.pth"))["base_network"]
+    #     ckp = {}
+    #     for k, v in checkpoint.items():
+    #         if "module" in k:
+    #             ckp[k.split("module.")[-1]] = v
+    #         else:
+    #             ckp[k] = v
+    #     base_network.load_state_dict(ckp)
+    #     log_str = "successfully restore from {}".format(osp.join(config["restore_path"], "best_model.pth"))
+    #     config["out_file"].write(log_str+"\n")
+    #     config["out_file"].flush()
+    #     print(log_str)
 
     parameter_list = base_network.get_parameters()
     ## set optimizer
@@ -162,6 +165,7 @@ def train(config):
     optimizer = optimizer_config["type"](parameter_list, \
                     **(optimizer_config["optim_params"]))
     param_lr = []
+
     for param_group in optimizer.param_groups:
         param_lr.append(param_group["lr"])
     schedule_param = optimizer_config["lr_param"]
@@ -184,6 +188,7 @@ def train(config):
     total_loss_value = 0
     best_acc = 0
     loss_value = 0
+
     for i in tqdm(range(config["num_iterations"]), total=config["num_iterations"]):
         if i % config["test_interval"] == config["test_interval"]-1:
             base_network.train(False)
@@ -195,11 +200,11 @@ def train(config):
                 best_acc = temp_acc
 
                 wandb.log({
-                    'iteration': i,
-                    'precision': temp_acc,
-                    'classifier_loss': classifier_loss_value,
-                    'transfer_loss': transfer_loss_value,
-                    'total_loss': total_loss_value,
+                    f'{exp_tag}_iteration': i,
+                    f'{exp_tag}_precision': temp_acc,
+                    f'{exp_tag}_classifier_loss': classifier_loss_value,
+                    f'{exp_tag}_transfer_loss': transfer_loss_value,
+                    f'{exp_tag}_total_loss': total_loss_value,
                 })
 
             print("class_loss: {:.3f}".format(loss_value))
@@ -214,8 +219,9 @@ def train(config):
             print('end of training')
 
             wandb.log({
-                'best_step': best_step,
-                'best_acc': best_acc,
+                'exp_full_tag': config["exp_full_tag"],
+                f'{exp_tag}_best_step': best_step,
+                f'{exp_tag}_best_acc': best_acc,
             })
             break
 
@@ -231,17 +237,23 @@ def train(config):
         xt, _ = iter_target.next()  # target minibatch
         xs, xt, ys = Variable(xs).cuda(), Variable(xt).cuda(), Variable(ys).cuda()
         
-        g_xs, f_g_xs = base_network(xs)  # source embedded data
-        g_xt, f_g_xt = base_network(xt)  # target embedded data
-        pred_xt = F.softmax(f_g_xt,1)
+        if config['method'] == 'JUmbOT':
 
-        classifier_loss = criterion(f_g_xs, ys)
+            g_xs, f_g_xs = base_network(xs)  # source embedded data
+            g_xt, f_g_xt = base_network(xt)  # target embedded data
+            pred_xt = F.softmax(f_g_xt,1)
 
-        ys = F.one_hot(ys, num_classes=class_num).float()  # Get One Hot probability vectors
+            classifier_loss = criterion(f_g_xs, ys)
 
-        M_embed = torch.cdist(g_xs, g_xt)**2  # Term on embedded data 
-        M_sce = - torch.mm(ys, torch.transpose(torch.log(pred_xt), 0, 1))  # Term on labels
-        M = alpha * M_embed + lambda_t * M_sce  # Ground cost
+            ys = F.one_hot(ys, num_classes=class_num).float()  # Get One Hot probability vectors
+
+            M_embed = torch.cdist(g_xs, g_xt)**2  # Term on embedded data 
+            M_sce = - torch.mm(ys, torch.transpose(torch.log(pred_xt), 0, 1))  # Term on labels
+            M = alpha * M_embed + lambda_t * M_sce  # Ground cost
+
+        else:
+            method_name = config['method']
+            raise ValueError(f'Method {method_name} has not been implemented.')
 
         #OT computation
         a, b = ot.unif(g_xs.size()[0]), ot.unif(g_xt.size()[0])
@@ -276,12 +288,14 @@ if __name__ == "__main__":
             raise argparse.ArgumentTypeError('Unsupported value encountered.')
     parser = argparse.ArgumentParser(description='Conditional Domain Adversarial Network')
     parser.add_argument('method', type=str, default='UOT')
-
     parser.add_argument('--num_gpu', type=int, default='2', help="num of gpus")
-    parser.add_argument('--net', type=str, default='ResNet50', choices=["ResNet18", "ResNet34", "ResNet50", "ResNet101", "ResNet152", "VGG11", "VGG13", "VGG16", "VGG19", "VGG11BN", "VGG13BN", "VGG16BN", "VGG19BN", "AlexNet"])
+    parser.add_argument('--net', type=str, default='ResNet50', choices=["ResNet50", "ResNet101", "ResNet152", "VGG11", "VGG13", "VGG16", "VGG19", "VGG11BN", "VGG13BN", "VGG16BN", "VGG19BN"])
     parser.add_argument('--dset', type=str, default='office', choices=['office', 'image-clef', 'visda', 'office-home'], help="The dataset or source dataset used")
-    parser.add_argument('--s_dset_path', type=str, default='./data/office/amazon_31_list.txt', help="The source dataset path list")
-    parser.add_argument('--t_dset_path', type=str, default='./data/office/webcam_10_list.txt', help="The target dataset path list")
+    # parser.add_argument('--s_dset_path', type=str, default='./data/office/amazon_31_list.txt', help="The source dataset path list")
+    # parser.add_argument('--t_dset_path', type=str, default='./data/office/webcam_10_list.txt', help="The target dataset path list")
+    # parser.add_argument('--s_dset_id', type=int, default=0, help="The source dataset path list, e.g. if you set 0 -> office_home/Art.txt")
+    # parser.add_argument('--t_dset_id', type=int, default=1, help="The target dataset path list, e.g. if you set 1 -> office_home/Clipart.txt")
+
     parser.add_argument('--test_interval', type=int, default=500, help="interval of two continuous test phase")
     parser.add_argument('--snapshot_interval', type=int, default=5000, help="interval of two continuous output model")
 
@@ -295,8 +309,9 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=12345)
     parser.add_argument('--num_worker', type=int, default=4)
     parser.add_argument('--test_10crop', type=str2bool, default=True)
-    parser.add_argument('--adv_weight', type=float, default=1.0, help="weight of adversarial loss")
-    parser.add_argument('--source_detach', default=False, type=str2bool, help="detach source feature from the adversarial learning")
+
+    # parser.add_argument('--adv_weight', type=float, default=1.0, help="weight of adversarial loss")
+    # parser.add_argument('--source_detach', default=False, type=str2bool, help="detach source feature from the adversarial learning")
 
     parser.add_argument("--wandb_entity", type=str, default='rlopt', help="entitiy of wandb team")
     parser.add_argument("--wandb_project_name", type=str, default='default_project', help="entitiy of wandb project")
@@ -359,6 +374,7 @@ if __name__ == "__main__":
 
 
     # ================ Dataset Dependent Configuration ================ 
+    config["dataset"] = args.dset
     if config["dataset"] == "office-home":
         config["optimizer"]["lr_param"]["lr"] = 0.001 # optimal parameters
         config["network"]["params"]["class_num"] = 65
@@ -383,22 +399,10 @@ if __name__ == "__main__":
     else:
         cluster_name = os.environ['CLUSTER_NAME']
         raise ValueError(f'Dataset {cluster_name} has not been supported.')
-
-
-    s_dset_path = os.path.join(f'{data_folder}/', args.dset, f'{domain_names[args.s_dset_id]}.txt')
-    t_dset_path = os.path.join(f'{data_folder}/', args.dset, f'{domain_names[args.t_dset_id]}.txt')
-
-    config["dataset"] = args.dset
-    config["data"] = {"source":{"list_path":s_dset_path, "batch_size":args.batch_size}, \
-                        "target":{"list_path":t_dset_path, "batch_size":args.batch_size}, \
-                        "test":{"list_path":t_dset_path, "batch_size":4}
-                        }
-    print('s dataset: ', s_dset_path)
-    print('t dataset: ', t_dset_path)
     
     #OH param : alpha = 0.01, lambda = 0.5, reg_m = 0.5
     #VisDA param : alpha = 0.005, lambda = 1., reg_m = 0.3
-
+    
     # ================ Hyperparams ================ 
     results = []
     config["alpha"] = 0.01
@@ -419,5 +423,30 @@ if __name__ == "__main__":
     print(f'wandb_exp_name: f{wandb_exp_name}')
 
     ####### Main
-    results.append(train(config))
-    print(results)
+
+
+    counter = 0
+    for count_s, domain_name_s in enumerate(domain_names):
+        for count_t, domain_name_t in enumerate(domain_names):
+
+            if count_s != count_t:
+
+                s_dset_path = os.path.join(f'{data_folder}/', args.dset, f'{domain_names[count_s]}.txt')
+                t_dset_path = os.path.join(f'{data_folder}/', args.dset, f'{domain_names[count_t]}.txt')
+
+                exp_full_tag = f'{counter}:{domain_names[count_s]}->{domain_names[count_t]}'
+                config["exp_tag"] = counter
+                config["exp_full_tag"] = exp_full_tag
+
+                config["data"] = {"source":{"list_path":s_dset_path, "batch_size":args.batch_size}, \
+                                    "target":{"list_path":t_dset_path, "batch_size":args.batch_size}, \
+                                    "test":{"list_path":t_dset_path, "batch_size":4}
+                                    }
+
+                print(f'counter: {counter}')
+                print('s dataset: ', s_dset_path)
+                print('t dataset: ', t_dset_path)
+
+                train(config)
+
+
