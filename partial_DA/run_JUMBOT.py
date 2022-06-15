@@ -242,11 +242,11 @@ if __name__ == "__main__":
     args.name = names[args.s][0].upper() + names[args.t][0].upper()
     args.output_dir = os.path.join('ckp/partial', args.net, args.dset, args.name, args.output)
 
-    if not os.path.exists(args.output_dir):
-        os.system('mkdir -p ' + args.output_dir)
+    # if not os.path.exists(args.output_dir):
+    #     os.system('mkdir -p ' + args.output_dir)
     args.out_file = open(os.path.join(args.output_dir, "log.txt"), "w")
     if not os.path.exists(args.output_dir):
-        os.mkdir(args.output_dir)
+        os.makedirs(args.output_dir)
     
     args.out_file.write(str(args)+'\n')
     args.out_file.flush()

@@ -344,7 +344,7 @@ if __name__ == "__main__":
         print("checkpoint dir exists, which will be removed")
         import shutil
         shutil.rmtree(config["output_path"], ignore_errors=True)
-    os.mkdir(config["output_path"])
+    os.makedirs(config["output_path"])
     config["out_file"] = open(osp.join(config["output_path"], "log.txt"), "w")
 
     if len(config['gpu'].split(','))>1:
