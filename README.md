@@ -1,6 +1,15 @@
 # JUMBOT
 Official Python3 implementation of our ICML 2021 paper "Unbalanced minibatch Optimal Transport; applications to Domain Adaptation".
 
+### Python Optimal Transport (POT) 0.8.x
+!!! The following code is based on POT 0.7. Check the version you are using before using this code. If you want to use POT 0.8.x, you have to convert input probability weights and ground cost to Float64 otherwise it will not work.
+
+```
+a, b = ot.unif(g_xs.size()[0]).astype('float64'), ot.unif(g_xt.size()[0]).astype('float64')
+pi = ot.unbalanced.sinkhorn_knopp_unbalanced(a, b, M.double().detach().cpu().numpy(),
+                                             0.01, reg_m=reg_m) ## POT 0.8.2
+```
+
 
 ### Abstract
 Optimal transport distances have found many applications in machine learning for their capacity to compare non-parametric probability distributions. Yet their algorithmic complexity generally prevents their direct use on large scale datasets. Among the possible strategies to alleviate this issue, practitioners can rely on computing estimates of these distances over subsets of data, {\em i.e.} minibatches. While computationally appealing, we highlight in this paper some limits of this strategy, arguing it can lead to undesirable smoothing effects. As an alternative, we suggest that the same minibatch strategy coupled with unbalanced optimal transport can yield more robust behavior. We discuss the associated theoretical properties, such as unbiased estimators, existence of gradients and concentration bounds. Our experimental study shows that in challenging problems associated to domain adaptation, the use of unbalanced optimal transport leads to significantly better results, competing with or surpassing recent baselines.
